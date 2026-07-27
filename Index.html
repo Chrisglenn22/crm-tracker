@@ -3416,6 +3416,13 @@ function slSaveVersion(type, evt) {
   }
   db.slitterVersions.push({ id: versionNo, type, label, savedAt: new Date().toISOString(), snapshot });
   saveDB();
+  // Sync this version to Supabase immediately
+  var c = sbGetClient();
+  if(c) {
+    c.from('slitter_versions').upsert({ id: versionNo, type, label, saved_at: new Date().toISOString(), snapshot }, {onConflict:'id'})
+      .then(function(r){ if(r.error) console.warn('slitter_versions save error:', r.error.message); })
+      .catch(function(e){ console.error('slitter_versions upsert error:', e); });
+  }
   const btn = evt && evt.target;
   if (btn) { const orig = btn.textContent; btn.textContent = '✓ V'+versionNo; btn.disabled = true; setTimeout(() => { btn.textContent = orig; btn.disabled = false; }, 1500); }
   renderSlVersionsTable();
@@ -3495,6 +3502,12 @@ function deleteSlVersion(id) {
   if (!confirm('Delete this saved version?')) return;
   db.slitterVersions = (db.slitterVersions || []).filter(v => v.id !== id);
   saveDB();
+  var c = sbGetClient();
+  if(c) {
+    c.from('slitter_versions').delete().eq('id', id)
+      .then(function(r){ if(r.error) console.warn('slitter_versions delete error:', r.error.message); })
+      .catch(function(e){ console.error('slitter_versions delete error:', e); });
+  }
   renderSlVersionsTable();
 }
 
@@ -3954,12 +3967,14 @@ function sbLoad() {
   Promise.all([
     c.from('comms').select('*').order('id'),
     c.from('customers').select('*').order('name'),
-    c.from('mill').select('*').order('id')
+    c.from('mill').select('*').order('id'),
+    c.from('slitter_versions').select('*').order('id')
   ]).then(function(results) {
-    var comms=results[0].data||[], custs=results[1].data||[], mill=results[2].data||[];
+    var comms=results[0].data||[], custs=results[1].data||[], mill=results[2].data||[], slVers=results[3].data||[];
     if(results[0].error) console.warn('comms:', results[0].error.message);
     if(results[1].error) console.warn('custs:', results[1].error.message);
     if(results[2].error) console.warn('mill:', results[2].error.message);
+    if(results[3].error) console.warn('slitter_versions:', results[3].error.message);
     if(comms.length>0) db.comms=comms;
     if(custs.length>0) db.customers=custs;
     if(mill.length>0){
@@ -3975,6 +3990,22 @@ function sbLoad() {
         showToast('✓ Seeded '+db.mill.length+' mill requests to Supabase');
       }).catch(function(e){ console.error('Mill seed error:',e); });
     }
+    // Slitter versions — Supabase is source of truth; seed from localStorage if table empty
+    if(slVers.length>0){
+      db.slitterVersions = slVers.map(function(v){
+        return { id:v.id, type:v.type, label:v.label, savedAt:v.saved_at, snapshot:v.snapshot };
+      });
+      var maxSlId = Math.max.apply(null, slVers.map(function(v){return v.id||0;}));
+      db.nextSlVersionId = maxSlId + 1;
+    } else if((db.slitterVersions||[]).length>0) {
+      // seed existing localStorage versions up to Supabase
+      var seedSlVers = (db.slitterVersions||[]).map(function(v){
+        return c.from('slitter_versions').upsert({ id:v.id, type:v.type, label:v.label, saved_at:v.savedAt, snapshot:v.snapshot },{onConflict:'id'});
+      });
+      Promise.all(seedSlVers).then(function(){
+        showToast('✓ Seeded '+(db.slitterVersions||[]).length+' slitter versions to Supabase');
+      }).catch(function(e){ console.error('Slitter seed error:',e); });
+    }
     seedBudgetData();
     renderDashboard();
     var ap=document.querySelector('.page.active');
@@ -3985,7 +4016,7 @@ function sbLoad() {
       if(pid==='budget')renderBudgetTracker();
     }
     if(ind) ind.textContent='● Synced';
-    showToast('✓ '+db.customers.length+' customers, '+db.comms.length+' comms, '+(db.mill||[]).length+' mill');
+    showToast('✓ '+db.customers.length+' customers, '+db.comms.length+' comms, '+(db.mill||[]).length+' mill, '+(db.slitterVersions||[]).length+' slitter versions');
   }).catch(function(e){
     console.error('sbLoad error:',e);
     if(ind) ind.textContent='⚠ Offline';
