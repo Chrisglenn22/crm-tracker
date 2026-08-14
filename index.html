@@ -2786,6 +2786,65 @@ function onLoginSuccess() {
   showToast('Welcome back! ' + db.customers.length + ' customers, ' + db.mill.length + ' mill requests');
 }
 
+// ═══════════════ IDLE SESSION TIMEOUT (auto sign-out after 1hr inactivity) ═══════════════
+var IDLE_LIMIT_MS = 60 * 60 * 1000; // 1 hour
+var _idleCheckInterval = null;
+var _idleListenersBound = false;
+var _idleActivityThrottled = false;
+
+function recordActivity() {
+  if (localStorage.getItem('crm_authed') !== '1') return;
+  if (_idleActivityThrottled) return;
+  _idleActivityThrottled = true;
+  setTimeout(function () { _idleActivityThrottled = false; }, 1000);
+  localStorage.setItem('crm_last_active', String(Date.now()));
+}
+
+function checkIdle() {
+  if (localStorage.getItem('crm_authed') !== '1') return;
+  var last = parseInt(localStorage.getItem('crm_last_active') || String(Date.now()), 10);
+  if (Date.now() - last >= IDLE_LIMIT_MS) {
+    doLogout(true);
+  }
+}
+
+function startSessionTimer() {
+  localStorage.setItem('crm_last_active', String(Date.now()));
+  if (!_idleListenersBound) {
+    ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'].forEach(function (evt) {
+      window.addEventListener(evt, recordActivity, { passive: true });
+    });
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible') checkIdle();
+    });
+    _idleListenersBound = true;
+  }
+  if (_idleCheckInterval) clearInterval(_idleCheckInterval);
+  _idleCheckInterval = setInterval(checkIdle, 30000); // poll every 30s
+}
+
+function stopSessionTimer() {
+  if (_idleCheckInterval) { clearInterval(_idleCheckInterval); _idleCheckInterval = null; }
+}
+
+function doLogout(idle) {
+  stopSessionTimer();
+  localStorage.removeItem('crm_authed');
+  localStorage.removeItem('crm_login_time');
+  localStorage.removeItem('crm_last_active');
+  var c = (typeof sbGetClient === 'function') ? sbGetClient() : null;
+  if (c && c.auth && typeof c.auth.signOut === 'function') c.auth.signOut();
+  var ls = document.getElementById('login-screen');
+  if (ls) ls.style.display = 'flex';
+  var pwEl = document.getElementById('login-password');
+  if (pwEl) pwEl.value = '';
+  var errEl = document.getElementById('login-error');
+  if (errEl) {
+    errEl.style.display = idle ? 'block' : 'none';
+    errEl.textContent = idle ? 'Signed out after 1 hour of inactivity' : '';
+  }
+}
+
 // ═══════════════ INIT ═══════════════
 (function() {
   var APP_VER = 'v4';
