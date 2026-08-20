@@ -2787,7 +2787,12 @@ function onLoginSuccess() {
   // Always re-sync from Supabase on load, not just on a fresh password entry -
   // otherwise a browser that's already "remembered" (crm_authed) never checks
   // Supabase again for up to 7 days and just keeps showing its own stale cache.
-  if (typeof sbLoad === 'function') sbLoad();
+  // Deferred via setTimeout: on the session-restore path this runs before the
+  // script has finished executing further down, where SB_URL/SB_KEY (const)
+  // are declared - calling sbLoad() synchronously here throws "Cannot access
+  // 'SB_URL' before initialization". Deferring to the next tick lets the rest
+  // of the script finish first.
+  setTimeout(function () { if (typeof sbLoad === 'function') sbLoad(); }, 0);
 }
 
 // ═══════════════ IDLE SESSION TIMEOUT (auto sign-out after 1hr inactivity) ═══════════════
