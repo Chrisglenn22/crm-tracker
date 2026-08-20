@@ -2784,6 +2784,10 @@ function onLoginSuccess() {
   seedBudgetData();
   renderDashboard();
   showToast('Welcome back! ' + db.customers.length + ' customers, ' + db.mill.length + ' mill requests');
+  // Always re-sync from Supabase on load, not just on a fresh password entry -
+  // otherwise a browser that's already "remembered" (crm_authed) never checks
+  // Supabase again for up to 7 days and just keeps showing its own stale cache.
+  if (typeof sbLoad === 'function') sbLoad();
 }
 
 // ═══════════════ IDLE SESSION TIMEOUT (auto sign-out after 1hr inactivity) ═══════════════
