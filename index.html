@@ -3593,6 +3593,9 @@ function psAddRow(data) {
   tr.style.borderBottom = '1px solid var(--border)';
   const inp = (field, ph, w) => `<input type="text" id="ps-${field}-${id}" value="${(data[field]||'').toString().replace(/"/g,'&quot;')}" placeholder="${ph||''}" oninput="psCalc()"
       style="width:${w||'90px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);font-family:monospace;font-size:12px;outline:none">`;
+  // Size drives the OD calc (it holds the coil width after the "*"), so it needs to trigger a recalc too
+  const sizeInp = (field, ph, w) => `<input type="text" id="ps-${field}-${id}" value="${(data[field]||'').toString().replace(/"/g,'&quot;')}" placeholder="${ph||''}" oninput="psRowRecalc(${id})"
+      style="width:${w||'90px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);font-family:monospace;font-size:12px;outline:none">`;
   // Plastic Coating — its own Yes/No column, separate from the Paint field
   const plasticSel = (field, w) => { const v = data[field] || ''; return `<select id="ps-${field}-${id}" onchange="psCalc()"
       style="width:${w||'70px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 4px;color:var(--text);font-family:inherit;font-size:12px;outline:none">
@@ -3600,18 +3603,18 @@ function psAddRow(data) {
       <option value="Yes"${v==='Yes'?' selected':''}>Yes</option>
       <option value="No"${v==='No'?' selected':''}>No</option>
     </select>`; };
-  // Qty drivers — Suggested Qty and Coil Weight and Coils/Pallet drive the auto-calculated fields
-  const driverInp = (field, ph, w) => `<input type="number" id="ps-${field}-${id}" value="${data[field]!=null?data[field]:''}" placeholder="${ph||''}" step="any" oninput="psRowRecalc(${id})"
-      style="width:${w||'75px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);text-align:right;font-family:monospace;font-size:12px;outline:none">`;
   const numInp = (field, ph, w) => `<input type="number" id="ps-${field}-${id}" value="${data[field]!=null?data[field]:''}" placeholder="${ph||''}" step="any" oninput="psCalc()"
       style="width:${w||'75px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);text-align:right;font-family:monospace;font-size:12px;outline:none">`;
-  // Auto-calculated fields — still editable so a manual override sticks until a driver field changes again
+  // Suggested Qty, Total Qty of Coils, and Coils/Pallet are the sheet's manual inputs — they drive everything else
+  const driverInp = (field, ph, w) => `<input type="number" id="ps-${field}-${id}" value="${data[field]!=null?data[field]:''}" placeholder="${ph||''}" step="any" oninput="psRowRecalc(${id})"
+      style="width:${w||'75px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);text-align:right;font-family:monospace;font-size:12px;outline:none">`;
+  // Auto-calculated fields (Coil Weight, Pallets, kg/Pallet, OD) — still editable so a manual override sticks until a driver changes again
   const autoInp = (field, w) => `<input type="number" id="ps-${field}-${id}" value="${data[field]!=null?data[field]:''}" step="any" oninput="psCalc()"
       style="width:${w||'75px'};background:rgba(217,119,6,0.06);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);text-align:right;font-family:monospace;font-size:12px;outline:none">`;
 
   tr.innerHTML = `
     <td style="padding:8px 10px;font-size:12px;color:var(--text-muted);font-family:monospace">${id}</td>
-    <td style="padding:5px 6px">${inp('size','e.g. 0.7x300','110px')}</td>
+    <td style="padding:5px 6px">${sizeInp('size','e.g. 0.7*300','110px')}</td>
     <td style="padding:5px 6px">${inp('alloy','e.g. 3004H24','100px')}</td>
     <td style="padding:5px 6px">${inp('fpaint','e.g. PE','70px')}</td>
     <td style="padding:5px 6px">${plasticSel('fplastic')}</td>
@@ -3629,12 +3632,12 @@ function psAddRow(data) {
     <td style="padding:5px 6px">${driverInp('suggqty','tons')}</td>
     <td style="padding:5px 6px">${inp('slitpattern','','100px')}</td>
     <td style="padding:5px 6px">${inp('packing','e.g. Max 1.0t','110px')}</td>
-    <td style="padding:5px 6px">${driverInp('coilwt','kg')}</td>
-    <td style="padding:5px 6px">${autoInp('totalcoils')}</td>
+    <td style="padding:5px 6px">${autoInp('coilwt')}</td>
+    <td style="padding:5px 6px">${driverInp('totalcoils','')}</td>
     <td style="padding:5px 6px">${driverInp('coilspallet','')}</td>
     <td style="padding:5px 6px">${autoInp('pallets')}</td>
     <td style="padding:5px 6px">${autoInp('kgpallet')}</td>
-    <td style="padding:5px 6px">${inp('od','','70px')}</td>
+    <td style="padding:5px 6px">${autoInp('od')}</td>
     <td style="padding:5px 6px;text-align:center">
       <button onclick="psRemoveRow(${id})" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:12px;font-weight:700">✕</button>
     </td>`;
@@ -3644,24 +3647,57 @@ function psAddRow(data) {
   psSyncScrollbars();
 }
 
-// Total Qty of Coils = Suggested Qty (t) × 1000 / Coil Weight (kg);
-// Qty of Pallets = Total Qty of Coils / Coils per Pallet (rounded up);
-// kg/Pallet = Coil Weight × Coils per Pallet. Mirrors the relationships in Chris's Aluminium Slitting workbook.
+// Formulas replicated exactly from Chris's Aluminium Slitting workbook:
+//   Coil Weight (kg) = ROUND(Suggested Qty(t) / Total Qty of Coils, 3) × 1000
+//   Qty of Pallets    = Total Qty of Coils / Coils per Pallet
+//   kg / Pallet       = Coils per Pallet × Coil Weight
+//   OD (m)            = SQRT( CoilWeight/(density × π × width) × 4 + coreID² )
+//     — width is the number after "*" in the Size field (e.g. "0.7*300" → 300mm)
+//     — density is 2.68 for aluminium, 7.85 for steel (per the Material selector)
+//     — coreID is a fixed 0.505 m core, as used throughout the workbook
 function psRowRecalc(id) {
   const get = f => { const el = document.getElementById('ps-'+f+'-'+id); return el ? parseFloat(el.value) : NaN; };
-  const suggQty = get('suggqty'), coilWt = get('coilwt'), coilsPerPallet = get('coilspallet');
+  const suggQty = get('suggqty'), totalCoilsIn = get('totalcoils'), coilsPerPallet = get('coilspallet');
+  const sizeEl = document.getElementById('ps-size-' + id);
+  const sizeVal = sizeEl ? sizeEl.value : '';
 
-  const totalCoilsEl = document.getElementById('ps-totalcoils-' + id);
+  const coilWtEl = document.getElementById('ps-coilwt-' + id);
   const palletsEl = document.getElementById('ps-pallets-' + id);
   const kgPalletEl = document.getElementById('ps-kgpallet-' + id);
+  const odEl = document.getElementById('ps-od-' + id);
 
-  let totalCoils = (suggQty > 0 && coilWt > 0) ? Math.round(suggQty * 1000 / coilWt) : null;
-  if (totalCoilsEl) totalCoilsEl.value = totalCoils != null ? totalCoils : '';
+  let coilWt = null;
+  if (suggQty > 0 && totalCoilsIn > 0) {
+    coilWt = Math.round((suggQty / totalCoilsIn) * 1000) / 1000 * 1000;
+  }
+  if (coilWtEl) coilWtEl.value = coilWt != null ? coilWt : '';
 
-  if (kgPalletEl) kgPalletEl.value = (coilWt > 0 && coilsPerPallet > 0) ? (coilWt * coilsPerPallet) : '';
-  if (palletsEl) palletsEl.value = (totalCoils && coilsPerPallet > 0) ? Math.ceil(totalCoils / coilsPerPallet) : '';
+  if (palletsEl) palletsEl.value = (totalCoilsIn > 0 && coilsPerPallet > 0) ? +(totalCoilsIn / coilsPerPallet).toFixed(3) : '';
+  if (kgPalletEl) kgPalletEl.value = (coilWt != null && coilsPerPallet > 0) ? +(coilsPerPallet * coilWt).toFixed(2) : '';
+
+  if (odEl) {
+    const widthMatch = (sizeVal || '').match(/\*\s*([\d.]+)/);
+    const width = widthMatch ? parseFloat(widthMatch[1]) : NaN;
+    const material = document.getElementById('ps-material') ? document.getElementById('ps-material').value : '';
+    const density = material.indexOf('Steel') !== -1 ? 7.85 : 2.68;
+    const coreID = 0.505;
+    if (coilWt != null && width > 0) {
+      const od = Math.sqrt((coilWt / (density * 3.14 * width)) * 4 + coreID * coreID);
+      odEl.value = +od.toFixed(3);
+    } else {
+      odEl.value = '';
+    }
+  }
 
   psCalc();
+}
+
+// Material affects the OD density constant for every row — recalc all rows when it changes
+function psRecalcAll() {
+  document.querySelectorAll('#ps-rows tr').forEach(tr => {
+    const id = tr.id.replace('ps-row-', '');
+    psRowRecalc(id);
+  });
 }
 
 function psSyncScrollbars() {
@@ -5691,7 +5727,7 @@ document.addEventListener('DOMContentLoaded', function() {
       <div style="padding:18px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
         <div>
           <label style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px">Material</label>
-          <select id="ps-material" onchange="psCalc()" style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:13px;outline:none">
+          <select id="ps-material" onchange="psRecalcAll()" style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:13px;outline:none">
             <option value="Painted Aluminium">Painted Aluminium</option>
             <option value="Painted Steel">Painted Steel</option>
           </select>
@@ -5729,12 +5765,12 @@ document.addEventListener('DOMContentLoaded', function() {
               <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Suggested Qty (t)</th>
               <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Slitting Pattern</th>
               <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Packing</th>
-              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Coil Wt (kg)</th>
-              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Total Qty of Coils<br><span style="font-size:8px;font-weight:600;text-transform:none;opacity:0.7">(auto)</span></th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Coil Wt (kg)<br><span style="font-size:8px;font-weight:600;text-transform:none;opacity:0.7">(auto)</span></th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Total Qty of Coils</th>
               <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Coils / Pallet</th>
               <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Qty of Pallets<br><span style="font-size:8px;font-weight:600;text-transform:none;opacity:0.7">(auto)</span></th>
               <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">kg / Pallet<br><span style="font-size:8px;font-weight:600;text-transform:none;opacity:0.7">(auto)</span></th>
-              <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">OD</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">OD (m)<br><span style="font-size:8px;font-weight:600;text-transform:none;opacity:0.7">(auto)</span></th>
               <th rowspan="2" style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>
             </tr>
             <tr style="background:rgba(217,119,6,0.08)">
