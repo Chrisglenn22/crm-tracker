@@ -3907,6 +3907,113 @@ function printPaintSlitter() {
   win.document.close();
 }
 
+function psShowTab(tab) {
+  const plan = document.getElementById('ps-panel-plan');
+  const versions = document.getElementById('ps-panel-versions');
+  const tabPlan = document.getElementById('ps-tab-plan');
+  const tabVersions = document.getElementById('ps-tab-versions');
+  if (tab === 'plan') {
+    plan.style.display = ''; versions.style.display = 'none';
+    tabPlan.style.background = '#d97706'; tabPlan.style.color = '#fff'; tabPlan.style.fontWeight = '700';
+    tabVersions.style.background = 'transparent'; tabVersions.style.color = '#8a5a1a'; tabVersions.style.fontWeight = '600';
+  } else {
+    plan.style.display = 'none'; versions.style.display = '';
+    tabVersions.style.background = '#d97706'; tabVersions.style.color = '#fff'; tabVersions.style.fontWeight = '700';
+    tabPlan.style.background = 'transparent'; tabPlan.style.color = '#8a5a1a'; tabPlan.style.fontWeight = '600';
+    renderPsVersionsTable();
+  }
+}
+
+// ═══ SAVED VERSIONS (Painted Slitter) ═══
+function psSaveVersion(evt) {
+  if (!db.paintSlitterVersions) db.paintSlitterVersions = [];
+  if (!db.nextPsVersionId) db.nextPsVersionId = 1;
+  const versionNo = db.nextPsVersionId++;
+  const material = document.getElementById('ps-material').value;
+  const customer = document.getElementById('ps-customer').value;
+  const notes = document.getElementById('ps-notes').value;
+  const rows = psRowData();
+  const label = `${customer || material} · ${rows.length} line${rows.length===1?'':'s'}`;
+  const snapshot = { material, customer, notes, rows };
+  db.paintSlitterVersions.push({ id: versionNo, label, savedAt: new Date().toISOString(), snapshot });
+  saveDB();
+  // Sync this version to Supabase immediately
+  const c = sbGetClient();
+  if (c) {
+    c.from('paint_slitter_versions').upsert(
+      { id: versionNo, label, saved_at: new Date().toISOString(), snapshot },
+      { onConflict: 'id' }
+    ).then(function(r){ if (r.error) console.warn('paint_slitter_versions save error:', r.error.message); })
+     .catch(function(e){ console.error('paint_slitter_versions upsert error:', e); });
+  }
+  const btn = evt && evt.target;
+  if (btn) { const orig = btn.innerHTML; btn.innerHTML = '✓ Saved V'+versionNo; btn.disabled = true; setTimeout(() => { btn.innerHTML = orig; btn.disabled = false; }, 1500); }
+  renderPsVersionsTable();
+}
+
+function renderPsVersionsTable() {
+  const el = document.getElementById('ps-versions-table');
+  if (!el) return;
+  const versions = (db.paintSlitterVersions || []).slice().sort((a, b) => b.id - a.id);
+  if (!versions.length) {
+    el.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-muted);font-size:13px">No saved versions yet. Use the 💾 Save Version button below the Slitting Plan.</div>';
+    return;
+  }
+  const rowsHtml = versions.map(v => {
+    const s = v.snapshot;
+    const d = new Date(v.savedAt);
+    const ds = d.toLocaleDateString('en-AU') + ' ' + d.toLocaleTimeString('en-AU', {hour:'2-digit',minute:'2-digit'});
+    const sizes = (s.rows||[]).map(r => r.size).filter(Boolean).join(', ') || '—';
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:10px 14px;font-family:monospace;font-weight:800;color:#d97706;font-size:13px;white-space:nowrap">V${v.id}</td>
+      <td style="padding:10px 14px;font-size:12px;white-space:nowrap">${s.material||'—'}</td>
+      <td style="padding:10px 14px;font-size:11px;color:var(--text-muted);white-space:nowrap">${ds}</td>
+      <td style="padding:10px 14px;font-size:12px">${s.customer||'—'} · ${(s.rows||[]).length} line item(s) · Sizes: ${sizes}</td>
+      <td style="padding:10px 14px;white-space:nowrap">
+        <button onclick="loadPsVersion(${v.id})" style="background:#d97706;color:#fff;border:none;border-radius:6px;padding:5px 12px;cursor:pointer;font-size:12px;font-weight:700;margin-right:5px">Load</button>
+        <button onclick="deletePsVersion(${v.id})" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:5px 9px;cursor:pointer;font-size:12px;font-weight:700">✕</button>
+      </td>
+    </tr>`;
+  }).join('');
+  el.innerHTML = `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse">
+    <thead><tr style="background:var(--surface2)">
+      <th style="padding:8px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Ver.</th>
+      <th style="padding:8px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Material</th>
+      <th style="padding:8px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Saved</th>
+      <th style="padding:8px 14px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Details</th>
+      <th style="padding:8px 14px;text-align:center;font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted)">Actions</th>
+    </tr></thead>
+    <tbody>${rowsHtml}</tbody>
+  </table></div>`;
+}
+
+function loadPsVersion(id) {
+  const v = (db.paintSlitterVersions || []).find(x => x.id === id);
+  if (!v) return;
+  const s = v.snapshot;
+  psShowTab('plan');
+  document.getElementById('ps-material').value = s.material || 'Painted Aluminium';
+  document.getElementById('ps-customer').value = s.customer || '';
+  document.getElementById('ps-notes').value = s.notes || '';
+  document.getElementById('ps-rows').innerHTML = '';
+  psRowCount = 0;
+  (s.rows || []).forEach(r => psAddRow(r));
+  psCalc();
+}
+
+function deletePsVersion(id) {
+  if (!confirm('Delete this saved version?')) return;
+  db.paintSlitterVersions = (db.paintSlitterVersions || []).filter(v => v.id !== id);
+  saveDB();
+  const c = sbGetClient();
+  if (c) {
+    c.from('paint_slitter_versions').delete().eq('id', id)
+      .then(function(r){ if (r.error) console.warn('paint_slitter_versions delete error:', r.error.message); })
+      .catch(function(e){ console.error('paint_slitter_versions delete error:', e); });
+  }
+  renderPsVersionsTable();
+}
+
 // ═══ SAVED VERSIONS (Slit Calculator + Nesting Optimiser) ═══
 function slSaveVersion(type, evt) {
   if (!db.slitterVersions) db.slitterVersions = [];
@@ -4499,14 +4606,16 @@ function sbLoad() {
     c.from('customers').select('*').order('name'),
     c.from('mill').select('*').order('id'),
     c.from('slitter_versions').select('*').order('id'),
-    c.from('paint_slitter').select('*').eq('id', 1).maybeSingle()
+    c.from('paint_slitter').select('*').eq('id', 1).maybeSingle(),
+    c.from('paint_slitter_versions').select('*').order('id')
   ]).then(function(results) {
-    var comms=results[0].data||[], custs=results[1].data||[], mill=results[2].data||[], slVers=results[3].data||[], paintSl=results[4].data||null;
+    var comms=results[0].data||[], custs=results[1].data||[], mill=results[2].data||[], slVers=results[3].data||[], paintSl=results[4].data||null, paintSlVers=results[5].data||[];
     if(results[0].error) console.warn('comms:', results[0].error.message);
     if(results[1].error) console.warn('custs:', results[1].error.message);
     if(results[2].error) console.warn('mill:', results[2].error.message);
     if(results[3].error) console.warn('slitter_versions:', results[3].error.message);
     if(results[4].error) console.warn('paint_slitter:', results[4].error.message);
+    if(results[5].error) console.warn('paint_slitter_versions:', results[5].error.message);
     if(comms.length>0) db.comms=comms;
     if(custs.length>0) db.customers=custs;
     if(mill.length>0){
@@ -4549,6 +4658,21 @@ function sbLoad() {
           .then(function(r){ if(r.error) console.warn('paint_slitter seed error:', r.error.message); else showToast('✓ Seeded Painted Slitter plan to Supabase'); })
           .catch(function(e){ console.error('paint_slitter seed error:', e); });
       }
+    }
+    // Painted Slitter saved versions — Supabase is source of truth; seed from localStorage-backed db if table empty
+    if(paintSlVers.length>0){
+      db.paintSlitterVersions = paintSlVers.map(function(v){
+        return { id:v.id, label:v.label, savedAt:v.saved_at, snapshot:v.snapshot };
+      });
+      var maxPsVerId = Math.max.apply(null, paintSlVers.map(function(v){return v.id||0;}));
+      db.nextPsVersionId = maxPsVerId + 1;
+    } else if((db.paintSlitterVersions||[]).length>0) {
+      var seedPsVers = (db.paintSlitterVersions||[]).map(function(v){
+        return c.from('paint_slitter_versions').upsert({ id:v.id, label:v.label, saved_at:v.savedAt, snapshot:v.snapshot },{onConflict:'id'});
+      });
+      Promise.all(seedPsVers).then(function(){
+        showToast('✓ Seeded '+(db.paintSlitterVersions||[]).length+' Painted Slitter versions to Supabase');
+      }).catch(function(e){ console.error('Painted Slitter versions seed error:',e); });
     }
     var ap0=document.querySelector('.page.active');
     if(ap0 && ap0.id==='page-paintslit' && typeof initPaintSlitter==='function') initPaintSlitter();
@@ -5719,6 +5843,21 @@ document.addEventListener('DOMContentLoaded', function() {
 <div id="page-paintslit" class="page">
   <div style="max-width:1500px;margin:0 auto">
 
+    <!-- SUB TABS -->
+    <div style="display:flex;gap:4px;background:rgba(217,119,6,0.06);border:1.5px solid rgba(217,119,6,0.15);border-radius:10px;padding:4px;margin-bottom:24px">
+      <button id="ps-tab-plan" onclick="psShowTab('plan')"
+        style="flex:1;padding:9px 16px;border-radius:7px;border:none;background:#d97706;color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">
+        🎨 Slitting Plan
+      </button>
+      <button id="ps-tab-versions" onclick="psShowTab('versions')"
+        style="flex:1;padding:9px 16px;border-radius:7px;border:none;background:transparent;color:#8a5a1a;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">
+        📁 Saved Versions
+      </button>
+    </div>
+
+    <!-- ═══ SLITTING PLAN ═══ -->
+    <div id="ps-panel-plan">
+
     <!-- Job Info -->
     <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px">
       <div style="background:linear-gradient(90deg,#7a3a00,#d97706);padding:14px 22px">
@@ -5798,11 +5937,27 @@ document.addEventListener('DOMContentLoaded', function() {
       </div>
     </div>
 
+    </div>
+
+    <!-- ═══ SAVED VERSIONS ═══ -->
+    <div id="ps-panel-versions" style="display:none">
+      <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden">
+        <div style="background:linear-gradient(90deg,#7a3a00,#d97706);padding:14px 22px;display:flex;align-items:center;justify-content:space-between">
+          <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff">Saved Versions</div>
+          <div style="font-size:11px;color:rgba(255,255,255,0.7)">Painted Slitter Plans</div>
+        </div>
+        <div id="ps-versions-table" style="padding:20px;color:var(--text-muted);font-size:13px;text-align:center">No saved versions yet.</div>
+      </div>
+    </div>
+
   </div>
   <div style="position:sticky;bottom:0;z-index:50;padding:16px 0 20px;background:linear-gradient(to top,var(--bg) 70%,transparent);pointer-events:none;margin-top:24px">
     <div style="display:flex;justify-content:center;gap:12px;pointer-events:auto">
       <button onclick="psClearAll()" style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:14px;padding:16px 28px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer">
         🗑️&nbsp; Clear All
+      </button>
+      <button onclick="psSaveVersion(event)" style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:14px;padding:16px 28px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer">
+        💾&nbsp; Save Version
       </button>
       <button onclick="printPaintSlitter()" style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#7a3a00,#d97706);color:#fff;border:none;border-radius:14px;padding:16px 40px;font-family:inherit;font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 6px 24px rgba(122,58,0,0.35)">
         🖨&nbsp; Print / Download
