@@ -1359,6 +1359,9 @@ html { height: 100%; }
   <div class="nav-item" onclick="showPage('slitter',this)">
     <span class="icon">✂️</span> Coil Slitter
   </div>
+  <div class="nav-item" onclick="showPage('paintslit',this)">
+    <span class="icon">🎨</span> Painted Slitter
+  </div>
   <div class="nav-item" onclick="showPage('duferco',this)">
     <span class="icon">📋</span> Duferco Rates
   </div>
@@ -1902,6 +1905,7 @@ function showPage(id, el) {
     dashboard:'Dashboard', comms:'Comms Log', actions:'Next Actions',
     customers:'Customers', mill:'Mill Requests', budget:'Budget Tracker',
     callplanner:'Call Planner', coilcalc:'Coil Calculator', slitter:'Coil Slitter',
+    paintslit:'Painted Slitter',
     duferco:'Duferco Rates', pricecalc:'Price Calculator', weightcalc:'Weight Calculator',
     backup:'Backup'
   };
@@ -1928,6 +1932,7 @@ function showPage(id, el) {
   if (id === 'callplanner') typeof initCallPlanner === 'function' && initCallPlanner();
   if (id === 'coilcalc')   initCoilCalc();
   if (id === 'slitter')    typeof initSlitter === 'function' && initSlitter();
+  if (id === 'paintslit')  typeof initPaintSlitter === 'function' && initPaintSlitter();
   if (id === 'duferco')    initDufercoPage();
   if (id === 'pricecalc')  calcPrices();
   if (id === 'weightcalc') calcWeights();
@@ -3445,6 +3450,357 @@ function nestSolve() {
   }).join('');
 }
 
+// ═══ PRINT SLITTER (Slit Calculator + Nesting Optimiser) ═══
+function printSlitter() {
+  const coilWidth  = document.getElementById('sl-coil-width').value;
+  const coilWeight = document.getElementById('sl-coil-weight').value;
+  const coilId     = document.getElementById('sl-coil-id').value;
+  const thickness  = document.getElementById('sl-thickness').value;
+  const materialEl = document.getElementById('sl-material');
+  const material   = materialEl.options[materialEl.selectedIndex].text;
+  const density    = document.getElementById('sl-density').value;
+
+  // Slit schedule rows (strip the remove-row column)
+  let slitRowsHtml = '';
+  document.querySelectorAll('#sl-rows tr').forEach(tr => {
+    const cells = tr.querySelectorAll('td');
+    if (cells.length < 6) return;
+    slitRowsHtml += `<tr>
+      <td>${cells[0].textContent}</td>
+      <td>${cells[1].querySelector('input') ? cells[1].querySelector('input').value : cells[1].textContent}</td>
+      <td>${cells[2].querySelector('input') ? cells[2].querySelector('input').value : cells[2].textContent}</td>
+      <td style="text-align:right">${cells[3].textContent}</td>
+      <td style="text-align:right">${cells[4].textContent}</td>
+      <td style="text-align:right">${cells[5].textContent}</td>
+    </tr>`;
+  });
+  const slitFootHtml = document.getElementById('sl-foot').innerHTML
+    .replace(/<td[^>]*><\/td>\s*<\/tr>/, '</tr>'); // drop trailing empty action cell
+  const slitSummaryCards = document.getElementById('sl-summary').innerHTML;
+
+  // Nesting Optimiser
+  const nestWidth  = document.getElementById('nest-width').value;
+  const nestKerf   = document.getElementById('nest-kerf').value;
+  const nestCoilWt = document.getElementById('nest-coil-weight') ? document.getElementById('nest-coil-weight').value : '';
+  const nestWidthsRows = [];
+  document.querySelectorAll('#nest-rows > div').forEach(div => {
+    const inputs = div.querySelectorAll('input');
+    if (inputs.length < 3) return;
+    nestWidthsRows.push(`<tr><td>${inputs[0].value || '—'} mm</td><td>${inputs[1].value}</td><td>${inputs[2].value}</td></tr>`);
+  });
+  const nestResultsHtml = document.getElementById('nest-results').innerHTML;
+
+  const dateStr = new Date().toLocaleDateString('en-AU', { day:'numeric', month:'long', year:'numeric' });
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>Coil Slitter</title><style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;padding:28px 36px;color:#0f172a}
+    h1{font-size:20px;font-weight:800;color:#0f2057;margin-bottom:4px}
+    .sub{font-size:12px;color:#64748b;margin-bottom:20px}
+    h2{font-size:15px;font-weight:800;color:#1d4ed8;margin:20px 0 10px;text-transform:uppercase;letter-spacing:0.5px}
+    table{width:100%;border-collapse:collapse;margin-bottom:16px;font-size:12px}
+    th,td{padding:7px 10px;border-bottom:1px solid #e2e8f0;text-align:left}
+    th{background:#f1f5f9;font-size:10px;text-transform:uppercase;letter-spacing:0.5px;color:#1d4ed8}
+    .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+    .meta div{background:#f8fafc;border-radius:8px;padding:10px 12px}
+    .meta .lbl{font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;margin-bottom:3px}
+    .meta .val{font-size:14px;font-weight:700}
+    .summary-cards{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:16px}
+    .summary-cards > div{background:#f8fafc;border-radius:8px;padding:10px 12px}
+    .page-break{page-break-before:always;margin-top:30px;padding-top:1px}
+    @media print{body{padding:14px 18px}}
+  </style></head><body>
+    <h1>✂️ Coil Slitter — Slit Calculator</h1>
+    <div class="sub">DITH Australia · Generated ${dateStr}</div>
+
+    <div class="meta">
+      <div><div class="lbl">Coil Width</div><div class="val">${coilWidth} mm</div></div>
+      <div><div class="lbl">Coil Weight</div><div class="val">${coilWeight} kg</div></div>
+      <div><div class="lbl">Coil ID</div><div class="val">${coilId} mm</div></div>
+      <div><div class="lbl">Thickness</div><div class="val">${thickness} mm</div></div>
+      <div><div class="lbl">Material</div><div class="val">${material}</div></div>
+      <div><div class="lbl">Density</div><div class="val">${density} kg/m³</div></div>
+    </div>
+
+    <h2>Slit Schedule</h2>
+    <table>
+      <thead><tr><th>#</th><th>Width (mm)</th><th>Strands</th><th style="text-align:right">Total mm</th><th style="text-align:right">Wt / Strand (kg)</th><th style="text-align:right">Total Wt (kg)</th></tr></thead>
+      <tbody>${slitRowsHtml}</tbody>
+      <tfoot>${slitFootHtml}</tfoot>
+    </table>
+
+    <h2>Summary</h2>
+    <div class="summary-cards">${slitSummaryCards}</div>
+
+    <div class="page-break">
+      <h1>🎯 Coil Slitter — Nesting Optimiser</h1>
+      <div class="sub">DITH Australia · Generated ${dateStr}</div>
+
+      <div class="meta">
+        <div><div class="lbl">Coil Width</div><div class="val">${nestWidth} mm</div></div>
+        <div><div class="lbl">Kerf / Blade</div><div class="val">${nestKerf} mm</div></div>
+        <div><div class="lbl">Master Coil Weight</div><div class="val">${nestCoilWt || '—'} kg</div></div>
+      </div>
+
+      <h2>Slit Widths Requested</h2>
+      <table>
+        <thead><tr><th>Width</th><th>Min</th><th>Max</th></tr></thead>
+        <tbody>${nestWidthsRows.join('') || '<tr><td colspan="3">No widths entered</td></tr>'}</tbody>
+      </table>
+
+      <h2>Nesting Results</h2>
+      ${nestResultsHtml}
+    </div>
+
+    <scr${''}ipt>window.onload=function(){setTimeout(function(){window.print();},400);}</scr${''}ipt>
+  </body></html>`);
+  win.document.close();
+}
+
+// ═══════════════════════════════════════════
+// PAINTED SLITTER (steel or aluminium — size, alloy, front/back coating)
+// ═══════════════════════════════════════════
+let psRowCount = 0;
+let psLoadedOnce = false;
+const PS_STORAGE_KEY = 'paintSlitterData'; // offline fallback cache only — Supabase (paint_slitter table) is the source of truth
+
+function initPaintSlitter() {
+  // Prefer db.paintSlitter (populated from Supabase by sbLoad) over the local cache
+  const saved = (db.paintSlitter && db.paintSlitter.rows && db.paintSlitter.rows.length) ? db.paintSlitter : psLoad();
+  document.getElementById('ps-rows').innerHTML = '';
+  psRowCount = 0;
+  if (saved && saved.rows && saved.rows.length) {
+    document.getElementById('ps-material').value = saved.material || 'Painted Aluminium';
+    document.getElementById('ps-customer').value = saved.customer || '';
+    document.getElementById('ps-notes').value = saved.notes || '';
+    saved.rows.forEach(r => psAddRow(r));
+  } else {
+    psAddRow();
+    psAddRow();
+    psAddRow();
+  }
+  psLoadedOnce = true;
+  psCalc();
+}
+
+function psAddRow(data) {
+  data = data || {};
+  psRowCount++;
+  const id = psRowCount;
+  const tr = document.createElement('tr');
+  tr.id = 'ps-row-' + id;
+  tr.style.borderBottom = '1px solid var(--border)';
+  const inp = (field, ph, w, extra) => `<input type="text" id="ps-${field}-${id}" value="${(data[field]||'').toString().replace(/"/g,'&quot;')}" placeholder="${ph||''}" oninput="psCalc()"
+      style="width:${w||'90px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);font-family:monospace;font-size:12px;outline:none${extra||''}">`;
+  const numInp = (field, ph, w) => `<input type="number" id="ps-${field}-${id}" value="${data[field]!=null?data[field]:''}" placeholder="${ph||''}" step="any" oninput="psCalc()"
+      style="width:${w||'75px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);text-align:right;font-family:monospace;font-size:12px;outline:none">`;
+
+  tr.innerHTML = `
+    <td style="padding:8px 10px;font-size:12px;color:var(--text-muted);font-family:monospace">${id}</td>
+    <td style="padding:5px 6px">${inp('size','e.g. 0.7x300','110px')}</td>
+    <td style="padding:5px 6px">${inp('alloy','e.g. 3004H24','100px')}</td>
+    <td style="padding:5px 6px">${inp('fcoat','PE / PVC','80px')}</td>
+    <td style="padding:5px 6px">${inp('fcolour','colour','110px')}</td>
+    <td style="padding:5px 6px">${inp('fgloss','gloss','60px')}</td>
+    <td style="padding:5px 6px">${inp('fgauge','gauge','60px')}</td>
+    <td style="padding:5px 6px">${inp('bcoat','PE / PVC','80px')}</td>
+    <td style="padding:5px 6px">${inp('bcolour','colour','110px')}</td>
+    <td style="padding:5px 6px">${inp('bgloss','gloss','60px')}</td>
+    <td style="padding:5px 6px">${inp('bgauge','gauge','60px')}</td>
+    <td style="padding:5px 6px">${numInp('qty','tons')}</td>
+    <td style="padding:5px 6px">${numInp('coilwt','kg')}</td>
+    <td style="padding:5px 6px">${numInp('totalcoils','')}</td>
+    <td style="padding:5px 6px">${numInp('coilspallet','')}</td>
+    <td style="padding:5px 6px">${numInp('pallets','')}</td>
+    <td style="padding:5px 6px">${numInp('kgpallet','')}</td>
+    <td style="padding:5px 6px">${inp('od','','70px')}</td>
+    <td style="padding:5px 6px">${inp('packing','e.g. Max 1.0t','110px')}</td>
+    <td style="padding:5px 6px;text-align:center">
+      <button onclick="psRemoveRow(${id})" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:12px;font-weight:700">✕</button>
+    </td>`;
+  document.getElementById('ps-rows').appendChild(tr);
+  psCalc();
+}
+
+function psRemoveRow(id) {
+  const row = document.getElementById('ps-row-' + id);
+  if (row) { row.remove(); psCalc(); }
+}
+
+function psClearAll() {
+  if (!confirm('Clear all rows from the Painted Slitter plan?')) return;
+  document.getElementById('ps-rows').innerHTML = '';
+  psRowCount = 0;
+  psAddRow();
+  psCalc();
+}
+
+function psRowData() {
+  const rows = [];
+  document.querySelectorAll('#ps-rows tr').forEach(tr => {
+    const idx = tr.id.replace('ps-row-', '');
+    const get = f => { const el = document.getElementById('ps-'+f+'-'+idx); return el ? el.value : ''; };
+    rows.push({
+      size: get('size'), alloy: get('alloy'),
+      fcoat: get('fcoat'), fcolour: get('fcolour'), fgloss: get('fgloss'), fgauge: get('fgauge'),
+      bcoat: get('bcoat'), bcolour: get('bcolour'), bgloss: get('bgloss'), bgauge: get('bgauge'),
+      qty: get('qty'), coilwt: get('coilwt'), totalcoils: get('totalcoils'),
+      coilspallet: get('coilspallet'), pallets: get('pallets'), kgpallet: get('kgpallet'),
+      od: get('od'), packing: get('packing')
+    });
+  });
+  return rows;
+}
+
+function psCalc() {
+  const rows = psRowData();
+  let totQty = 0, totCoils = 0, totPallets = 0;
+  rows.forEach(r => {
+    totQty += parseFloat(r.qty) || 0;
+    totCoils += parseFloat(r.totalcoils) || 0;
+    totPallets += parseFloat(r.pallets) || 0;
+  });
+  const foot = document.getElementById('ps-foot');
+  if (foot) {
+    foot.innerHTML = `<tr style="background:var(--navy);font-weight:800">
+      <td colspan="11" style="padding:9px 10px;color:#fff;font-size:12px">TOTALS</td>
+      <td style="padding:9px 10px;text-align:right;font-family:monospace;color:#93c5fd">${totQty ? totQty.toFixed(2) : '—'} t</td>
+      <td></td>
+      <td style="padding:9px 10px;text-align:right;font-family:monospace;color:#86efac">${totCoils ? totCoils : '—'}</td>
+      <td></td>
+      <td style="padding:9px 10px;text-align:right;font-family:monospace;color:#86efac">${totPallets ? totPallets : '—'}</td>
+      <td colspan="4"></td>
+    </tr>`;
+  }
+  psSave();
+}
+
+function psSave() {
+  if (!psLoadedOnce) return; // don't save over Supabase data while the tab is still populating
+  const data = {
+    material: document.getElementById('ps-material').value,
+    customer: document.getElementById('ps-customer').value,
+    notes: document.getElementById('ps-notes').value,
+    rows: psRowData()
+  };
+  db.paintSlitter = data;
+  try { localStorage.setItem(PS_STORAGE_KEY, JSON.stringify(data)); } catch(e) {} // offline fallback cache
+
+  clearTimeout(window._psTimer);
+  window._psTimer = setTimeout(function() {
+    const c = sbGetClient();
+    if (!c) return;
+    const ind = document.getElementById('sync-indicator');
+    if (ind) ind.textContent = '⟳ Saving...';
+    c.from('paint_slitter').upsert(
+      { id: 1, material: data.material, customer: data.customer, notes: data.notes, rows: data.rows, updated_at: new Date().toISOString() },
+      { onConflict: 'id' }
+    ).then(function(r) {
+      if (r.error) { console.warn('paint_slitter save error:', r.error.message); if (ind) ind.textContent = '⚠ Save error'; }
+      else if (ind) ind.textContent = '● Synced';
+    }).catch(function(e) {
+      console.error('paint_slitter save error:', e);
+      if (ind) ind.textContent = '⚠ Save error';
+    });
+  }, 1500);
+}
+
+function psLoad() {
+  try {
+    const raw = localStorage.getItem(PS_STORAGE_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch(e) { return null; }
+}
+
+function printPaintSlitter() {
+  const material = document.getElementById('ps-material').value;
+  const customer = document.getElementById('ps-customer').value;
+  const notes = document.getElementById('ps-notes').value;
+  const rows = psRowData();
+  const dateStr = new Date().toLocaleDateString('en-AU', { day:'numeric', month:'long', year:'numeric' });
+
+  let totQty = 0, totCoils = 0, totPallets = 0;
+  const bodyRows = rows.map(r => {
+    totQty += parseFloat(r.qty) || 0;
+    totCoils += parseFloat(r.totalcoils) || 0;
+    totPallets += parseFloat(r.pallets) || 0;
+    return `<tr>
+      <td>${r.size||'—'}</td><td>${r.alloy||'—'}</td>
+      <td>${r.fcoat||'—'}</td><td>${r.fcolour||'—'}</td><td>${r.fgloss||'—'}</td><td>${r.fgauge||'—'}</td>
+      <td>${r.bcoat||'—'}</td><td>${r.bcolour||'—'}</td><td>${r.bgloss||'—'}</td><td>${r.bgauge||'—'}</td>
+      <td style="text-align:right">${r.qty||'—'}</td>
+      <td style="text-align:right">${r.coilwt||'—'}</td>
+      <td style="text-align:right">${r.totalcoils||'—'}</td>
+      <td style="text-align:right">${r.coilspallet||'—'}</td>
+      <td style="text-align:right">${r.pallets||'—'}</td>
+      <td style="text-align:right">${r.kgpallet||'—'}</td>
+      <td>${r.od||'—'}</td>
+      <td>${r.packing||'—'}</td>
+    </tr>`;
+  }).join('');
+
+  const win = window.open('', '_blank');
+  win.document.write(`<!DOCTYPE html><html><head><title>Painted Slitter Plan</title><style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:Arial,sans-serif;padding:24px 28px;color:#0f172a}
+    h1{font-size:19px;font-weight:800;color:#0f2057;margin-bottom:4px}
+    .sub{font-size:12px;color:#64748b;margin-bottom:16px}
+    .meta{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+    .meta div{background:#f8fafc;border-radius:8px;padding:9px 12px}
+    .meta .lbl{font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;margin-bottom:3px}
+    .meta .val{font-size:13px;font-weight:700}
+    table{width:100%;border-collapse:collapse;font-size:10.5px}
+    th,td{padding:5px 7px;border-bottom:1px solid #e2e8f0;text-align:left;white-space:nowrap}
+    th{background:#fef3e2;font-size:8.5px;text-transform:uppercase;letter-spacing:0.3px;color:#8a5a1a}
+    tfoot td{font-weight:800;background:#0f2057;color:#fff}
+    @media print{body{padding:10px 14px}@page{size:landscape}}
+  </style></head><body>
+    <h1>🎨 Painted Slitter Plan — ${material}</h1>
+    <div class="sub">DITH Australia · Generated ${dateStr}</div>
+    <div class="meta">
+      <div><div class="lbl">Customer / Job Ref</div><div class="val">${customer || '—'}</div></div>
+      <div><div class="lbl">Notes</div><div class="val">${notes || '—'}</div></div>
+      <div><div class="lbl">Line Items</div><div class="val">${rows.length}</div></div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th rowspan="2">Size (mm)</th><th rowspan="2">Alloy</th>
+          <th colspan="4" style="text-align:center">Front Side</th>
+          <th colspan="4" style="text-align:center">Back Side</th>
+          <th rowspan="2" style="text-align:right">Qty (t)</th>
+          <th rowspan="2" style="text-align:right">Coil Wt (kg)</th>
+          <th rowspan="2" style="text-align:right">Total Coils</th>
+          <th rowspan="2" style="text-align:right">Coils/Pallet</th>
+          <th rowspan="2" style="text-align:right">Pallets</th>
+          <th rowspan="2" style="text-align:right">kg/Pallet</th>
+          <th rowspan="2">OD</th>
+          <th rowspan="2">Packing</th>
+        </tr>
+        <tr>
+          <th>Coating</th><th>Colour</th><th>Gloss</th><th>Gauge</th>
+          <th>Coating</th><th>Colour</th><th>Gloss</th><th>Gauge</th>
+        </tr>
+      </thead>
+      <tbody>${bodyRows}</tbody>
+      <tfoot>
+        <tr>
+          <td colspan="10">TOTALS</td>
+          <td style="text-align:right">${totQty ? totQty.toFixed(2) : '—'} t</td>
+          <td></td>
+          <td style="text-align:right">${totCoils || '—'}</td>
+          <td></td>
+          <td style="text-align:right">${totPallets || '—'}</td>
+          <td colspan="3"></td>
+        </tr>
+      </tfoot>
+    </table>
+    <scr${''}ipt>window.onload=function(){setTimeout(function(){window.print();},400);}</scr${''}ipt>
+  </body></html>`);
+  win.document.close();
+}
+
 // ═══ SAVED VERSIONS (Slit Calculator + Nesting Optimiser) ═══
 function slSaveVersion(type, evt) {
   if (!db.slitterVersions) db.slitterVersions = [];
@@ -4036,13 +4392,15 @@ function sbLoad() {
     c.from('comms').select('*').order('id'),
     c.from('customers').select('*').order('name'),
     c.from('mill').select('*').order('id'),
-    c.from('slitter_versions').select('*').order('id')
+    c.from('slitter_versions').select('*').order('id'),
+    c.from('paint_slitter').select('*').eq('id', 1).maybeSingle()
   ]).then(function(results) {
-    var comms=results[0].data||[], custs=results[1].data||[], mill=results[2].data||[], slVers=results[3].data||[];
+    var comms=results[0].data||[], custs=results[1].data||[], mill=results[2].data||[], slVers=results[3].data||[], paintSl=results[4].data||null;
     if(results[0].error) console.warn('comms:', results[0].error.message);
     if(results[1].error) console.warn('custs:', results[1].error.message);
     if(results[2].error) console.warn('mill:', results[2].error.message);
     if(results[3].error) console.warn('slitter_versions:', results[3].error.message);
+    if(results[4].error) console.warn('paint_slitter:', results[4].error.message);
     if(comms.length>0) db.comms=comms;
     if(custs.length>0) db.customers=custs;
     if(mill.length>0){
@@ -4074,6 +4432,20 @@ function sbLoad() {
         showToast('✓ Seeded '+(db.slitterVersions||[]).length+' slitter versions to Supabase');
       }).catch(function(e){ console.error('Slitter seed error:',e); });
     }
+    // Painted Slitter — Supabase is source of truth; seed from localStorage if table empty
+    if(paintSl){
+      db.paintSlitter = { material: paintSl.material||'Painted Aluminium', customer: paintSl.customer||'', notes: paintSl.notes||'', rows: paintSl.rows||[] };
+    } else {
+      var localPs = psLoad();
+      if(localPs && localPs.rows && localPs.rows.length){
+        db.paintSlitter = localPs;
+        c.from('paint_slitter').upsert({ id:1, material:localPs.material||'', customer:localPs.customer||'', notes:localPs.notes||'', rows:localPs.rows, updated_at:new Date().toISOString() },{onConflict:'id'})
+          .then(function(r){ if(r.error) console.warn('paint_slitter seed error:', r.error.message); else showToast('✓ Seeded Painted Slitter plan to Supabase'); })
+          .catch(function(e){ console.error('paint_slitter seed error:', e); });
+      }
+    }
+    var ap0=document.querySelector('.page.active');
+    if(ap0 && ap0.id==='page-paintslit' && typeof initPaintSlitter==='function') initPaintSlitter();
     seedBudgetData();
     renderDashboard();
     var ap=document.querySelector('.page.active');
@@ -5033,7 +5405,6 @@ document.addEventListener('DOMContentLoaded', function() {
   <button id="xe-fab" onclick="xeToggle()">💱</button>
 </div>
 
-</body>
 
     <div id="page-slitter" class="page">
       <div style="max-width:1100px;margin:0 auto">
@@ -5238,6 +5609,93 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
 
 
+<!-- PAINTED SLITTER PAGE (steel or aluminium) -->
+<div id="page-paintslit" class="page">
+  <div style="max-width:1500px;margin:0 auto">
+
+    <!-- Job Info -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px">
+      <div style="background:linear-gradient(90deg,#7a3a00,#d97706);padding:14px 22px">
+        <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff">Job Details</div>
+      </div>
+      <div style="padding:18px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px">
+        <div>
+          <label style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px">Material</label>
+          <select id="ps-material" onchange="psCalc()" style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:13px;outline:none">
+            <option value="Painted Aluminium">Painted Aluminium</option>
+            <option value="Painted Steel">Painted Steel</option>
+          </select>
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px">Customer / Job Ref</label>
+          <input type="text" id="ps-customer" placeholder="e.g. Versiclad" oninput="psCalc()" style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:13px;outline:none">
+        </div>
+        <div>
+          <label style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px">Notes</label>
+          <input type="text" id="ps-notes" placeholder="optional" oninput="psCalc()" style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:13px;outline:none">
+        </div>
+      </div>
+    </div>
+
+    <!-- Slitting Plan -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px">
+      <div style="background:linear-gradient(90deg,#7a3a00,#d97706);padding:14px 22px;display:flex;align-items:center;justify-content:space-between">
+        <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff">Slitting Plan</div>
+        <button onclick="psAddRow()"
+          style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:5px 14px;color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">
+          + Add Row
+        </button>
+      </div>
+      <div style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;min-width:1900px">
+          <thead>
+            <tr style="background:rgba(217,119,6,0.08)">
+              <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">#</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Size (mm)</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Alloy / Grade</th>
+              <th colspan="4" style="padding:6px 10px;text-align:center;font-size:10px;font-weight:800;text-transform:uppercase;color:#fff;background:#8a5a1a;border-bottom:1px solid var(--border)">Front Side</th>
+              <th colspan="4" style="padding:6px 10px;text-align:center;font-size:10px;font-weight:800;text-transform:uppercase;color:#fff;background:#5a4a1a;border-bottom:1px solid var(--border)">Back Side</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Qty (t)</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Coil Wt (kg)</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Total Coils</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Coils / Pallet</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Pallets</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">kg / Pallet</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">OD</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Packing</th>
+              <th rowspan="2" style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>
+            </tr>
+            <tr style="background:rgba(217,119,6,0.08)">
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#8a5a1a;border-bottom:1px solid var(--border)">Coating</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#8a5a1a;border-bottom:1px solid var(--border)">Colour</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#8a5a1a;border-bottom:1px solid var(--border)">Gloss</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#8a5a1a;border-bottom:1px solid var(--border)">Gauge</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#5a4a1a;border-bottom:1px solid var(--border)">Coating</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#5a4a1a;border-bottom:1px solid var(--border)">Colour</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#5a4a1a;border-bottom:1px solid var(--border)">Gloss</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#5a4a1a;border-bottom:1px solid var(--border)">Gauge</th>
+            </tr>
+          </thead>
+          <tbody id="ps-rows"></tbody>
+          <tfoot id="ps-foot"></tfoot>
+        </table>
+      </div>
+    </div>
+
+  </div>
+  <div style="position:sticky;bottom:0;z-index:50;padding:16px 0 20px;background:linear-gradient(to top,var(--bg) 70%,transparent);pointer-events:none;margin-top:24px">
+    <div style="display:flex;justify-content:center;gap:12px;pointer-events:auto">
+      <button onclick="psClearAll()" style="display:flex;align-items:center;gap:8px;background:var(--surface2);border:1px solid var(--border2);color:var(--text);border-radius:14px;padding:16px 28px;font-family:inherit;font-size:14px;font-weight:700;cursor:pointer">
+        🗑️&nbsp; Clear All
+      </button>
+      <button onclick="printPaintSlitter()" style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#7a3a00,#d97706);color:#fff;border:none;border-radius:14px;padding:16px 40px;font-family:inherit;font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 6px 24px rgba(122,58,0,0.35)">
+        🖨&nbsp; Print / Download
+      </button>
+    </div>
+  </div>
+</div>
+
+
 <!-- DUFERCO COSTING SHEET PAGE -->
 <div id="page-duferco" class="page">
 <div style="max-width:1400px;margin:0 auto">
@@ -5259,299 +5717,5 @@ document.addEventListener('DOMContentLoaded', function() {
 </div>
 
 
-<!-- BUDGET TRACKER PAGE -->
-    <div id="page-budget" class="page">
-      <div style="max-width:1300px;margin:0 auto">
-        <div id="budget-summary-cards" style="display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-bottom:24px"></div>
-        <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;flex-wrap:wrap">
-          <input type="text" id="budget-search" placeholder="🔍 Search..." oninput="renderBudgetTracker()"
-            style="background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 14px;color:var(--text);font-family:inherit;font-size:13px;outline:none;width:200px">
-          <select id="budget-sort" onchange="renderBudgetTracker()"
-            style="background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 12px;color:var(--text);font-family:inherit;font-size:13px;outline:none">
-            <option value="bud-rev-desc" selected>Budget Revenue ↓</option>
-            <option value="name">Name A–Z</option>
-            <option value="act-rev-desc">Actual Revenue ↓</option>
-            <option value="var-rev-desc">Variance ↓</option>
-          </select>
-          <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-muted);cursor:pointer">
-            <input type="checkbox" id="budget-hide-zero" onchange="renderBudgetTracker()"> Hide unbudgeted
-          </label>
-        </div>
-        <div class="card" style="overflow:hidden">
-          <div id="budget-table-container" style="overflow-x:auto"></div>
-        </div>
-      </div>
-    </div>
-    <!-- CALL PLANNER PAGE -->
-    <div id="page-callplanner" class="page">
-      <div style="max-width:1500px;margin:0 auto">
-        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;margin-bottom:16px">
-          <div>
-            <div style="font-family:'Syne',sans-serif;font-size:20px;font-weight:800;color:var(--navy)">📅 Call Planner</div>
-            <div style="font-size:12px;color:var(--text-muted)">4-week calendar · select a time slot then click a customer to add</div>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
-            <button onclick="cpPrevMonth()" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:7px 13px;color:var(--text);font-size:14px;font-weight:700;cursor:pointer">‹</button>
-            <div id="cp-week-label" style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;color:var(--navy);min-width:220px;text-align:center"></div>
-            <button onclick="cpNextMonth()" style="background:var(--surface);border:1px solid var(--border2);border-radius:8px;padding:7px 13px;color:var(--text);font-size:14px;font-weight:700;cursor:pointer">›</button>
-            <button onclick="cpGoToday()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:7px 12px;color:var(--text-muted);font-size:12px;font-weight:600;cursor:pointer">Today</button>
-            <button onclick="cpExportPlan()" style="background:#1d4ed8;border:none;border-radius:8px;padding:7px 16px;color:#fff;font-size:12px;font-weight:700;cursor:pointer">⬇ Export</button>
-          </div>
-        </div>
-        <div style="background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
-          <select id="cp-filter-state" onchange="cpRenderPool()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:6px 10px;color:var(--text);font-family:inherit;font-size:12px;outline:none"><option value="">All States</option></select>
-          <select id="cp-filter-suburb" onchange="cpRenderPool()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:6px 10px;color:var(--text);font-family:inherit;font-size:12px;outline:none"><option value="">All Suburbs</option></select>
-          <select id="cp-sort-pool" onchange="cpRenderPool()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:6px 10px;color:var(--text);font-family:inherit;font-size:12px;outline:none">
-            <option value="postcode">Sort: Postcode</option><option value="suburb">Sort: Suburb</option>
-            <option value="state">Sort: State</option><option value="name">Sort: Name</option>
-          </select>
-          <input type="text" id="cp-search" placeholder="🔍 Search..." oninput="cpRenderPool()" style="background:var(--surface2);border:1px solid var(--border2);border-radius:7px;padding:6px 10px;color:var(--text);font-family:inherit;font-size:12px;outline:none;width:150px">
-          <div style="margin-left:auto;font-size:11px;color:var(--text-muted)" id="cp-pool-count"></div>
-        </div>
-        <div style="display:grid;grid-template-columns:220px 1fr;gap:14px;align-items:start">
-          <div style="position:sticky;top:64px">
-            <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
-              <div style="background:linear-gradient(90deg,#1e3a8a,#1d4ed8);padding:11px 14px">
-                <div style="font-family:'Syne',sans-serif;font-size:11px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff">Customers</div>
-                <div style="font-size:10px;color:rgba(255,255,255,0.6);margin-top:1px">Select a slot then click customer</div>
-              </div>
-              <div id="cp-pool" style="max-height:calc(100vh - 300px);overflow-y:auto;padding:8px"></div>
-            </div>
-          </div>
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:12px;overflow:hidden">
-            <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:2px solid var(--border)">
-              <button id="cp-wk-btn-0" onclick="cpSetWeek(0)" style="padding:10px;border:none;border-right:1px solid var(--border);background:#1d4ed8;color:#fff;font-family:'Syne',sans-serif;font-size:11px;font-weight:800;cursor:pointer">WEEK 1</button>
-              <button id="cp-wk-btn-1" onclick="cpSetWeek(1)" style="padding:10px;border:none;border-right:1px solid var(--border);background:var(--surface2);color:var(--text-muted);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;cursor:pointer">WEEK 2</button>
-              <button id="cp-wk-btn-2" onclick="cpSetWeek(2)" style="padding:10px;border:none;border-right:1px solid var(--border);background:var(--surface2);color:var(--text-muted);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;cursor:pointer">WEEK 3</button>
-              <button id="cp-wk-btn-3" onclick="cpSetWeek(3)" style="padding:10px;border:none;background:var(--surface2);color:var(--text-muted);font-family:'Syne',sans-serif;font-size:11px;font-weight:700;cursor:pointer">WEEK 4</button>
-            </div>
-            <div id="cp-day-headers" style="display:grid;grid-template-columns:64px repeat(5,1fr);border-bottom:1px solid var(--border)"></div>
-            <div id="cp-time-grid" style="overflow-y:auto;max-height:calc(100vh - 320px)"></div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <!-- COIL OD CALCULATOR PAGE -->
-    <div id="page-coilcalc" class="page">
-      <div style="max-width:900px;margin:0 auto">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-          <div class="card" style="padding:0;overflow:hidden">
-            <div style="background:linear-gradient(90deg,#1e3a8a,#1d4ed8);padding:14px 20px"><div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff">Coil Inputs</div></div>
-            <div style="padding:20px">
-              <div style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:14px;align-items:end">
-                <div><label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:5px">Material</label>
-                  <select id="cc-material" onchange="coilMaterialChange()" style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:12px;outline:none">
-                    <option value="7.85">Steel / Stainless</option><option value="7.93">316 Stainless</option>
-                    <option value="2.71">Aluminium</option><option value="8.96">Copper</option>
-                  </select></div>
-                <div><label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:5px">Density</label>
-                  <input type="number" id="cc-density" value="7.85" step="0.01" oninput="coilCalc()" style="width:80px;background:var(--surface2);border:1.5px solid rgba(29,78,216,0.4);border-radius:8px;padding:8px 10px;color:#1d4ed8;font-family:monospace;font-size:13px;font-weight:700;outline:none"></div>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
-                <div><label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:5px">ID (mm)</label>
-                  <input type="number" id="cc-id" value="508" step="1" oninput="coilCalc()" style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:monospace;font-size:13px;outline:none"></div>
-                <div><label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:5px">Thickness (mm)</label>
-                  <input type="number" id="cc-thickness" value="1.2" step="0.05" oninput="coilCalc()" style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:monospace;font-size:13px;outline:none"></div>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                <div><label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:5px">Width (mm)</label>
-                  <input type="number" id="cc-width" value="1219" step="1" oninput="coilCalc()" style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:monospace;font-size:13px;outline:none"></div>
-                <div><label style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:5px">Weight (kg)</label>
-                  <input type="number" id="cc-weight" value="5000" step="10" oninput="coilCalc()" style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:monospace;font-size:13px;outline:none"></div>
-              </div>
-            </div>
-          </div>
-          <div class="card" style="padding:0;overflow:hidden">
-            <div style="background:linear-gradient(90deg,#065f46,#059669);padding:14px 20px"><div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff">Results</div></div>
-            <div style="padding:20px">
-              <div style="background:rgba(29,78,216,0.06);border:1.5px solid rgba(29,78,216,0.2);border-radius:10px;padding:16px;margin-bottom:14px;text-align:center">
-                <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--text-muted);letter-spacing:1px;margin-bottom:6px">Outer Diameter</div>
-                <div id="cc-od-result" style="font-size:36px;font-weight:800;font-family:monospace;color:#1d4ed8">—</div>
-                <div style="font-size:11px;color:var(--text-muted)">mm</div>
-              </div>
-              <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
-                <div style="background:var(--surface2);border-radius:8px;padding:12px;text-align:center"><div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">Coil Length</div><div id="cc-length-result" style="font-size:18px;font-weight:700;font-family:monospace;color:var(--text)">—</div><div style="font-size:10px;color:var(--text-muted)">metres</div></div>
-                <div style="background:var(--surface2);border-radius:8px;padding:12px;text-align:center"><div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">Wraps</div><div id="cc-wraps-result" style="font-size:18px;font-weight:700;font-family:monospace;color:var(--text)">—</div></div>
-                <div style="background:var(--surface2);border-radius:8px;padding:12px;text-align:center"><div style="font-size:10px;color:var(--text-muted);margin-bottom:4px">kg/metre</div><div id="cc-kgm-result" style="font-size:18px;font-weight:700;font-family:monospace;color:var(--text)">—</div></div>
-                <div style="background:var(--surface2);border-radius:8px;padding:12px;display:flex;align-items:center;justify-content:center"><div id="cc-diagram"></div></div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-    <!-- COIL SLITTING PAGE -->
-    <div id="page-slitter" class="page">
-      <div style="max-width:1100px;margin:0 auto">
-
-        <!-- SUB TABS -->
-        <div style="display:flex;gap:4px;background:rgba(29,78,216,0.06);border:1.5px solid rgba(29,78,216,0.15);border-radius:10px;padding:4px;margin-bottom:24px">
-          <button id="sl-tab-calc" onclick="slShowTab('calc')"
-            style="flex:1;padding:9px 16px;border-radius:7px;border:none;background:#1d4ed8;color:#fff;font-family:inherit;font-size:13px;font-weight:700;cursor:pointer">
-            ✂️ Slit Calculator
-          </button>
-          <button id="sl-tab-nest" onclick="slShowTab('nest')"
-            style="flex:1;padding:9px 16px;border-radius:7px;border:none;background:transparent;color:#4b5e8a;font-family:inherit;font-size:13px;font-weight:600;cursor:pointer">
-            🎯 Nesting Optimiser
-          </button>
-        </div>
-
-        <!-- ═══ SLIT CALCULATOR ═══ -->
-        <div id="sl-panel-calc">
-
-          <!-- Master Coil Inputs -->
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:20px">
-            <div style="background:linear-gradient(90deg,#1e3a8a,#1d4ed8);padding:14px 22px;display:flex;align-items:center;justify-content:space-between">
-              <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff">Master Coil</div>
-              <div id="sl-kgmm" style="font-family:'IBM Plex Mono',monospace;font-size:13px;color:rgba(255,255,255,0.8)">kg/mm: —</div>
-            </div>
-            <div style="padding:20px;display:grid;grid-template-columns:repeat(6,1fr);gap:14px;align-items:end">
-              <div>
-                <label style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px">Coil Width (mm)</label>
-                <input type="number" id="sl-coil-width" value="1219" min="1" step="1" oninput="slCalc()"
-                  style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;outline:none">
-              </div>
-              <div>
-                <label style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px">Coil Weight (kg)</label>
-                <input type="number" id="sl-coil-weight" value="5000" min="0" step="10" oninput="slCalc()"
-                  style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;outline:none">
-              </div>
-              <div>
-                <label style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px">Coil ID (mm)</label>
-                <input type="number" id="sl-coil-id" value="508" min="1" step="1" oninput="slCalc()"
-                  style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;outline:none">
-              </div>
-              <div>
-                <label style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px">Thickness (mm)</label>
-                <input type="number" id="sl-thickness" value="1.2" min="0.01" step="0.05" oninput="slCalc()"
-                  style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;outline:none">
-              </div>
-              <div>
-                <label style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px">Material</label>
-                <select id="sl-material" onchange="slMaterialChange()"
-                  style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:inherit;font-size:12px;outline:none">
-                  <option value="7850">Steel / Stainless</option>
-                  <option value="7930">316 Stainless</option>
-                  <option value="2710">Aluminium</option>
-                  <option value="8960">Copper</option>
-                </select>
-              </div>
-              <div>
-                <label style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:6px">Density (kg/m³)</label>
-                <input type="number" id="sl-density" value="7850" min="100" step="10" oninput="slCalc()"
-                  style="width:100%;background:var(--surface2);border:1.5px solid rgba(29,78,216,0.4);border-radius:8px;padding:8px 10px;color:#1d4ed8;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;outline:none">
-              </div>
-            </div>
-          </div>
-
-          <!-- Slit Rows -->
-          <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px">
-            <div style="background:linear-gradient(90deg,#065f46,#059669);padding:14px 22px;display:flex;align-items:center;justify-content:space-between">
-              <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff">Slit Schedule</div>
-              <button onclick="slAddRow()"
-                style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:5px 14px;color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">
-                + Add Row
-              </button>
-            </div>
-            <div style="overflow-x:auto">
-              <table style="width:100%;border-collapse:collapse">
-                <thead>
-                  <tr style="background:rgba(29,78,216,0.06)">
-                    <th style="padding:10px 16px;text-align:left;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1d4ed8;border-bottom:1px solid var(--border)">#</th>
-                    <th style="padding:10px 16px;text-align:left;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1d4ed8;border-bottom:1px solid var(--border)">Width (mm)</th>
-                    <th style="padding:10px 16px;text-align:left;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1d4ed8;border-bottom:1px solid var(--border)">Strands</th>
-                    <th style="padding:10px 16px;text-align:right;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1d4ed8;border-bottom:1px solid var(--border)">Total mm</th>
-                    <th style="padding:10px 16px;text-align:right;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1d4ed8;border-bottom:1px solid var(--border)">Weight / Strand (kg)</th>
-                    <th style="padding:10px 16px;text-align:right;font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:#1d4ed8;border-bottom:1px solid var(--border)">Total Weight (kg)</th>
-                    <th style="padding:10px 16px;text-align:center;border-bottom:1px solid var(--border)"></th>
-                  </tr>
-                </thead>
-                <tbody id="sl-rows"></tbody>
-                <tfoot id="sl-foot"></tfoot>
-              </table>
-            </div>
-          </div>
-
-          <!-- Summary + Visual -->
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-            <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px">
-              <div style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#1d4ed8;margin-bottom:16px">Summary</div>
-              <div id="sl-summary" style="display:grid;grid-template-columns:1fr 1fr;gap:10px"></div>
-            </div>
-            <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:20px">
-              <div style="font-size:11px;font-weight:800;letter-spacing:1.5px;text-transform:uppercase;color:#1d4ed8;margin-bottom:14px">Width Utilisation</div>
-              <div id="sl-bar" style="height:40px;border-radius:8px;overflow:hidden;display:flex;margin-bottom:10px;background:var(--surface2)"></div>
-              <div id="sl-bar-legend" style="display:flex;flex-wrap:wrap;gap:8px;font-size:11px"></div>
-            </div>
-          </div>
-        </div>
-
-        <!-- ═══ NESTING OPTIMISER ═══ -->
-        <div id="sl-panel-nest" style="display:none">
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-            <div>
-              <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden;margin-bottom:16px">
-                <div style="background:linear-gradient(90deg,#4a1a3a,#7a2a5a);padding:14px 22px">
-                  <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff">Master Coil</div>
-                </div>
-                <div style="padding:16px;display:grid;grid-template-columns:1fr 1fr;gap:12px">
-                  <div>
-                    <label style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:5px">Coil Width (mm)</label>
-                    <input type="number" id="nest-width" value="1219" min="1" step="1"
-                      style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;outline:none">
-                  </div>
-                  <div>
-                    <label style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted);display:block;margin-bottom:5px">Kerf / Blade (mm)</label>
-                    <input type="number" id="nest-kerf" value="2" min="0" step="0.5"
-                      style="width:100%;background:var(--surface2);border:1px solid var(--border2);border-radius:8px;padding:8px 10px;color:var(--text);font-family:'IBM Plex Mono',monospace;font-size:13px;outline:none">
-                  </div>
-                </div>
-              </div>
-
-              <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden">
-                <div style="background:linear-gradient(90deg,#4a1a3a,#7a2a5a);padding:14px 22px;display:flex;align-items:center;justify-content:space-between">
-                  <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff">Slit Widths</div>
-                  <button onclick="nestAddRow()"
-                    style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);border-radius:6px;padding:5px 14px;color:#fff;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer">+ Add</button>
-                </div>
-                <div style="padding:16px">
-                  <div style="display:grid;grid-template-columns:1fr auto auto auto;gap:8px;margin-bottom:8px">
-                    <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted)">Width</div>
-                    <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted)">Min</div>
-                    <div style="font-size:10px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--text-muted)">Max</div>
-                    <div></div>
-                  </div>
-                  <div id="nest-rows"></div>
-                </div>
-                <div style="padding:0 16px 16px">
-                  <button onclick="nestSolve()"
-                    style="width:100%;padding:11px;background:#7a2a5a;border:none;border-radius:8px;color:#fff;font-family:inherit;font-size:14px;font-weight:800;cursor:pointer;letter-spacing:0.5px">
-                    🎯 Find Best Nesting
-                  </button>
-                </div>
-              </div>
-            </div>
-
-            <div>
-              <div style="background:var(--surface);border:1px solid var(--border);border-radius:14px;overflow:hidden">
-                <div style="background:linear-gradient(90deg,#4a1a3a,#7a2a5a);padding:14px 22px">
-                  <div style="font-family:'Syne',sans-serif;font-size:13px;font-weight:800;letter-spacing:1px;text-transform:uppercase;color:#fff">Results</div>
-                </div>
-                <div id="nest-results" style="padding:20px;min-height:200px">
-                  <div style="color:var(--text-muted);font-size:13px;text-align:center;padding:30px">Add slit widths and click Find Best Nesting</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-      </div>
-      <div style="position:sticky;bottom:0;z-index:50;padding:16px 0 20px;background:linear-gradient(to top,var(--bg) 70%,transparent);pointer-events:none;margin-top:24px">
-        <div style="display:flex;justify-content:center;pointer-events:auto">
-          <button onclick="printSlitter()" style="display:flex;align-items:center;gap:10px;background:linear-gradient(135deg,#0f1f3d,#1d4ed8);color:#fff;border:none;border-radius:14px;padding:16px 40px;font-family:inherit;font-size:16px;font-weight:800;cursor:pointer;box-shadow:0 6px 24px rgba(15,31,61,0.35)">
-            🖨&nbsp; Print / Download Both Pages
-          </button>
-        </div>
-      </div>
     </div></body>
 </html>
