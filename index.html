@@ -3559,7 +3559,7 @@ function printSlitter() {
 }
 
 // ═══════════════════════════════════════════
-// PAINTED SLITTER (steel or aluminium — size, alloy, front/back coating)
+// PAINTED SLITTER (steel or aluminium — matches Chris's Aluminium Slitting workbook exactly)
 // ═══════════════════════════════════════════
 let psRowCount = 0;
 let psLoadedOnce = false;
@@ -3591,36 +3591,90 @@ function psAddRow(data) {
   const tr = document.createElement('tr');
   tr.id = 'ps-row-' + id;
   tr.style.borderBottom = '1px solid var(--border)';
-  const inp = (field, ph, w, extra) => `<input type="text" id="ps-${field}-${id}" value="${(data[field]||'').toString().replace(/"/g,'&quot;')}" placeholder="${ph||''}" oninput="psCalc()"
-      style="width:${w||'90px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);font-family:monospace;font-size:12px;outline:none${extra||''}">`;
+  const inp = (field, ph, w) => `<input type="text" id="ps-${field}-${id}" value="${(data[field]||'').toString().replace(/"/g,'&quot;')}" placeholder="${ph||''}" oninput="psCalc()"
+      style="width:${w||'90px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);font-family:monospace;font-size:12px;outline:none">`;
+  // Plastic Coating — its own Yes/No column, separate from the Paint field
+  const plasticSel = (field, w) => { const v = data[field] || ''; return `<select id="ps-${field}-${id}" onchange="psCalc()"
+      style="width:${w||'70px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 4px;color:var(--text);font-family:inherit;font-size:12px;outline:none">
+      <option value=""${v===''?' selected':''}>—</option>
+      <option value="Yes"${v==='Yes'?' selected':''}>Yes</option>
+      <option value="No"${v==='No'?' selected':''}>No</option>
+    </select>`; };
+  // Qty drivers — Suggested Qty and Coil Weight and Coils/Pallet drive the auto-calculated fields
+  const driverInp = (field, ph, w) => `<input type="number" id="ps-${field}-${id}" value="${data[field]!=null?data[field]:''}" placeholder="${ph||''}" step="any" oninput="psRowRecalc(${id})"
+      style="width:${w||'75px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);text-align:right;font-family:monospace;font-size:12px;outline:none">`;
   const numInp = (field, ph, w) => `<input type="number" id="ps-${field}-${id}" value="${data[field]!=null?data[field]:''}" placeholder="${ph||''}" step="any" oninput="psCalc()"
       style="width:${w||'75px'};background:var(--surface2);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);text-align:right;font-family:monospace;font-size:12px;outline:none">`;
+  // Auto-calculated fields — still editable so a manual override sticks until a driver field changes again
+  const autoInp = (field, w) => `<input type="number" id="ps-${field}-${id}" value="${data[field]!=null?data[field]:''}" step="any" oninput="psCalc()"
+      style="width:${w||'75px'};background:rgba(217,119,6,0.06);border:1px solid var(--border2);border-radius:6px;padding:6px 8px;color:var(--text);text-align:right;font-family:monospace;font-size:12px;outline:none">`;
 
   tr.innerHTML = `
     <td style="padding:8px 10px;font-size:12px;color:var(--text-muted);font-family:monospace">${id}</td>
     <td style="padding:5px 6px">${inp('size','e.g. 0.7x300','110px')}</td>
     <td style="padding:5px 6px">${inp('alloy','e.g. 3004H24','100px')}</td>
-    <td style="padding:5px 6px">${inp('fcoat','PE / PVC','80px')}</td>
+    <td style="padding:5px 6px">${inp('fpaint','e.g. PE','70px')}</td>
+    <td style="padding:5px 6px">${plasticSel('fplastic')}</td>
+    <td style="padding:5px 6px">${inp('fcode','code','90px')}</td>
     <td style="padding:5px 6px">${inp('fcolour','colour','110px')}</td>
     <td style="padding:5px 6px">${inp('fgloss','gloss','60px')}</td>
     <td style="padding:5px 6px">${inp('fgauge','gauge','60px')}</td>
-    <td style="padding:5px 6px">${inp('bcoat','PE / PVC','80px')}</td>
+    <td style="padding:5px 6px">${inp('bpaint','e.g. PE','70px')}</td>
+    <td style="padding:5px 6px">${plasticSel('bplastic')}</td>
+    <td style="padding:5px 6px">${inp('bcode','code','90px')}</td>
     <td style="padding:5px 6px">${inp('bcolour','colour','110px')}</td>
     <td style="padding:5px 6px">${inp('bgloss','gloss','60px')}</td>
     <td style="padding:5px 6px">${inp('bgauge','gauge','60px')}</td>
-    <td style="padding:5px 6px">${numInp('qty','tons')}</td>
-    <td style="padding:5px 6px">${numInp('coilwt','kg')}</td>
-    <td style="padding:5px 6px">${numInp('totalcoils','')}</td>
-    <td style="padding:5px 6px">${numInp('coilspallet','')}</td>
-    <td style="padding:5px 6px">${numInp('pallets','')}</td>
-    <td style="padding:5px 6px">${numInp('kgpallet','')}</td>
-    <td style="padding:5px 6px">${inp('od','','70px')}</td>
+    <td style="padding:5px 6px">${numInp('qty','')}</td>
+    <td style="padding:5px 6px">${driverInp('suggqty','tons')}</td>
+    <td style="padding:5px 6px">${inp('slitpattern','','100px')}</td>
     <td style="padding:5px 6px">${inp('packing','e.g. Max 1.0t','110px')}</td>
+    <td style="padding:5px 6px">${driverInp('coilwt','kg')}</td>
+    <td style="padding:5px 6px">${autoInp('totalcoils')}</td>
+    <td style="padding:5px 6px">${driverInp('coilspallet','')}</td>
+    <td style="padding:5px 6px">${autoInp('pallets')}</td>
+    <td style="padding:5px 6px">${autoInp('kgpallet')}</td>
+    <td style="padding:5px 6px">${inp('od','','70px')}</td>
     <td style="padding:5px 6px;text-align:center">
       <button onclick="psRemoveRow(${id})" style="background:#fee2e2;color:#dc2626;border:none;border-radius:6px;padding:4px 9px;cursor:pointer;font-size:12px;font-weight:700">✕</button>
     </td>`;
   document.getElementById('ps-rows').appendChild(tr);
+  // Run the formulas once on add so a row loaded with saved data shows correct auto values
+  psRowRecalc(id);
+  psSyncScrollbars();
+}
+
+// Total Qty of Coils = Suggested Qty (t) × 1000 / Coil Weight (kg);
+// Qty of Pallets = Total Qty of Coils / Coils per Pallet (rounded up);
+// kg/Pallet = Coil Weight × Coils per Pallet. Mirrors the relationships in Chris's Aluminium Slitting workbook.
+function psRowRecalc(id) {
+  const get = f => { const el = document.getElementById('ps-'+f+'-'+id); return el ? parseFloat(el.value) : NaN; };
+  const suggQty = get('suggqty'), coilWt = get('coilwt'), coilsPerPallet = get('coilspallet');
+
+  const totalCoilsEl = document.getElementById('ps-totalcoils-' + id);
+  const palletsEl = document.getElementById('ps-pallets-' + id);
+  const kgPalletEl = document.getElementById('ps-kgpallet-' + id);
+
+  let totalCoils = (suggQty > 0 && coilWt > 0) ? Math.round(suggQty * 1000 / coilWt) : null;
+  if (totalCoilsEl) totalCoilsEl.value = totalCoils != null ? totalCoils : '';
+
+  if (kgPalletEl) kgPalletEl.value = (coilWt > 0 && coilsPerPallet > 0) ? (coilWt * coilsPerPallet) : '';
+  if (palletsEl) palletsEl.value = (totalCoils && coilsPerPallet > 0) ? Math.ceil(totalCoils / coilsPerPallet) : '';
+
   psCalc();
+}
+
+function psSyncScrollbars() {
+  const wrap = document.getElementById('ps-table-wrap');
+  const track = document.getElementById('ps-scroll-track');
+  const dummy = document.getElementById('ps-scroll-dummy');
+  if (!wrap || !track || !dummy) return;
+  dummy.style.width = wrap.scrollWidth + 'px';
+  if (wrap._psSynced) return; // only attach listeners once
+  wrap._psSynced = true;
+  let syncing = false;
+  wrap.addEventListener('scroll', () => { if (syncing) return; syncing = true; track.scrollLeft = wrap.scrollLeft; syncing = false; });
+  track.addEventListener('scroll', () => { if (syncing) return; syncing = true; wrap.scrollLeft = track.scrollLeft; syncing = false; });
 }
 
 function psRemoveRow(id) {
@@ -3643,11 +3697,12 @@ function psRowData() {
     const get = f => { const el = document.getElementById('ps-'+f+'-'+idx); return el ? el.value : ''; };
     rows.push({
       size: get('size'), alloy: get('alloy'),
-      fcoat: get('fcoat'), fcolour: get('fcolour'), fgloss: get('fgloss'), fgauge: get('fgauge'),
-      bcoat: get('bcoat'), bcolour: get('bcolour'), bgloss: get('bgloss'), bgauge: get('bgauge'),
-      qty: get('qty'), coilwt: get('coilwt'), totalcoils: get('totalcoils'),
+      fpaint: get('fpaint'), fplastic: get('fplastic'), fcode: get('fcode'), fcolour: get('fcolour'), fgloss: get('fgloss'), fgauge: get('fgauge'),
+      bpaint: get('bpaint'), bplastic: get('bplastic'), bcode: get('bcode'), bcolour: get('bcolour'), bgloss: get('bgloss'), bgauge: get('bgauge'),
+      qty: get('qty'), suggqty: get('suggqty'), slitpattern: get('slitpattern'), packing: get('packing'),
+      coilwt: get('coilwt'), totalcoils: get('totalcoils'),
       coilspallet: get('coilspallet'), pallets: get('pallets'), kgpallet: get('kgpallet'),
-      od: get('od'), packing: get('packing')
+      od: get('od')
     });
   });
   return rows;
@@ -3655,22 +3710,28 @@ function psRowData() {
 
 function psCalc() {
   const rows = psRowData();
-  let totQty = 0, totCoils = 0, totPallets = 0;
+  let totQty = 0, totSuggQty = 0, totCoils = 0, totPallets = 0;
   rows.forEach(r => {
     totQty += parseFloat(r.qty) || 0;
+    totSuggQty += parseFloat(r.suggqty) || 0;
     totCoils += parseFloat(r.totalcoils) || 0;
     totPallets += parseFloat(r.pallets) || 0;
   });
   const foot = document.getElementById('ps-foot');
   if (foot) {
     foot.innerHTML = `<tr style="background:var(--navy);font-weight:800">
-      <td colspan="11" style="padding:9px 10px;color:#fff;font-size:12px">TOTALS</td>
-      <td style="padding:9px 10px;text-align:right;font-family:monospace;color:#93c5fd">${totQty ? totQty.toFixed(2) : '—'} t</td>
+      <td colspan="15" style="padding:9px 10px;color:#fff;font-size:12px">TOTALS</td>
+      <td style="padding:9px 10px;text-align:right;font-family:monospace;color:#93c5fd">${totQty ? totQty.toFixed(2) : '—'}</td>
+      <td style="padding:9px 10px;text-align:right;font-family:monospace;color:#93c5fd">${totSuggQty ? totSuggQty.toFixed(2) : '—'} t</td>
+      <td></td>
+      <td></td>
       <td></td>
       <td style="padding:9px 10px;text-align:right;font-family:monospace;color:#86efac">${totCoils ? totCoils : '—'}</td>
       <td></td>
       <td style="padding:9px 10px;text-align:right;font-family:monospace;color:#86efac">${totPallets ? totPallets : '—'}</td>
-      <td colspan="4"></td>
+      <td></td>
+      <td></td>
+      <td></td>
     </tr>`;
   }
   psSave();
@@ -3720,23 +3781,26 @@ function printPaintSlitter() {
   const rows = psRowData();
   const dateStr = new Date().toLocaleDateString('en-AU', { day:'numeric', month:'long', year:'numeric' });
 
-  let totQty = 0, totCoils = 0, totPallets = 0;
+  let totQty = 0, totSuggQty = 0, totCoils = 0, totPallets = 0;
   const bodyRows = rows.map(r => {
     totQty += parseFloat(r.qty) || 0;
+    totSuggQty += parseFloat(r.suggqty) || 0;
     totCoils += parseFloat(r.totalcoils) || 0;
     totPallets += parseFloat(r.pallets) || 0;
     return `<tr>
       <td>${r.size||'—'}</td><td>${r.alloy||'—'}</td>
-      <td>${r.fcoat||'—'}</td><td>${r.fcolour||'—'}</td><td>${r.fgloss||'—'}</td><td>${r.fgauge||'—'}</td>
-      <td>${r.bcoat||'—'}</td><td>${r.bcolour||'—'}</td><td>${r.bgloss||'—'}</td><td>${r.bgauge||'—'}</td>
+      <td>${r.fpaint||'—'}</td><td>${r.fplastic||'—'}</td><td>${r.fcode||'—'}</td><td>${r.fcolour||'—'}</td><td>${r.fgloss||'—'}</td><td>${r.fgauge||'—'}</td>
+      <td>${r.bpaint||'—'}</td><td>${r.bplastic||'—'}</td><td>${r.bcode||'—'}</td><td>${r.bcolour||'—'}</td><td>${r.bgloss||'—'}</td><td>${r.bgauge||'—'}</td>
       <td style="text-align:right">${r.qty||'—'}</td>
+      <td style="text-align:right">${r.suggqty||'—'}</td>
+      <td>${r.slitpattern||'—'}</td>
+      <td>${r.packing||'—'}</td>
       <td style="text-align:right">${r.coilwt||'—'}</td>
       <td style="text-align:right">${r.totalcoils||'—'}</td>
       <td style="text-align:right">${r.coilspallet||'—'}</td>
       <td style="text-align:right">${r.pallets||'—'}</td>
       <td style="text-align:right">${r.kgpallet||'—'}</td>
       <td>${r.od||'—'}</td>
-      <td>${r.packing||'—'}</td>
     </tr>`;
   }).join('');
 
@@ -3750,9 +3814,9 @@ function printPaintSlitter() {
     .meta div{background:#f8fafc;border-radius:8px;padding:9px 12px}
     .meta .lbl{font-size:9px;text-transform:uppercase;letter-spacing:0.5px;color:#64748b;margin-bottom:3px}
     .meta .val{font-size:13px;font-weight:700}
-    table{width:100%;border-collapse:collapse;font-size:10.5px}
-    th,td{padding:5px 7px;border-bottom:1px solid #e2e8f0;text-align:left;white-space:nowrap}
-    th{background:#fef3e2;font-size:8.5px;text-transform:uppercase;letter-spacing:0.3px;color:#8a5a1a}
+    table{width:100%;border-collapse:collapse;font-size:9.5px}
+    th,td{padding:4px 6px;border-bottom:1px solid #e2e8f0;text-align:left;white-space:nowrap}
+    th{background:#fef3e2;font-size:8px;text-transform:uppercase;letter-spacing:0.3px;color:#8a5a1a}
     tfoot td{font-weight:800;background:#0f2057;color:#fff}
     @media print{body{padding:10px 14px}@page{size:landscape}}
   </style></head><body>
@@ -3767,32 +3831,38 @@ function printPaintSlitter() {
       <thead>
         <tr>
           <th rowspan="2">Size (mm)</th><th rowspan="2">Alloy</th>
-          <th colspan="4" style="text-align:center">Front Side</th>
-          <th colspan="4" style="text-align:center">Back Side</th>
-          <th rowspan="2" style="text-align:right">Qty (t)</th>
+          <th colspan="6" style="text-align:center">Coating — Front Side</th>
+          <th colspan="6" style="text-align:center">Coating — Back Side</th>
+          <th rowspan="2" style="text-align:right">Qty</th>
+          <th rowspan="2" style="text-align:right">Suggested Qty (t)</th>
+          <th rowspan="2">Slitting Pattern</th>
+          <th rowspan="2">Packing</th>
           <th rowspan="2" style="text-align:right">Coil Wt (kg)</th>
-          <th rowspan="2" style="text-align:right">Total Coils</th>
+          <th rowspan="2" style="text-align:right">Total Qty of Coils</th>
           <th rowspan="2" style="text-align:right">Coils/Pallet</th>
-          <th rowspan="2" style="text-align:right">Pallets</th>
+          <th rowspan="2" style="text-align:right">Qty of Pallets</th>
           <th rowspan="2" style="text-align:right">kg/Pallet</th>
           <th rowspan="2">OD</th>
-          <th rowspan="2">Packing</th>
         </tr>
         <tr>
-          <th>Coating</th><th>Colour</th><th>Gloss</th><th>Gauge</th>
-          <th>Coating</th><th>Colour</th><th>Gloss</th><th>Gauge</th>
+          <th>Paint</th><th>Plastic Coating</th><th>Code</th><th>Colour</th><th>Gloss</th><th>Gauge</th>
+          <th>Paint</th><th>Plastic Coating</th><th>Code</th><th>Colour</th><th>Gloss</th><th>Gauge</th>
         </tr>
       </thead>
       <tbody>${bodyRows}</tbody>
       <tfoot>
         <tr>
-          <td colspan="10">TOTALS</td>
-          <td style="text-align:right">${totQty ? totQty.toFixed(2) : '—'} t</td>
+          <td colspan="14">TOTALS</td>
+          <td style="text-align:right">${totQty ? totQty.toFixed(2) : '—'}</td>
+          <td style="text-align:right">${totSuggQty ? totSuggQty.toFixed(2) : '—'} t</td>
+          <td></td>
+          <td></td>
           <td></td>
           <td style="text-align:right">${totCoils || '—'}</td>
           <td></td>
           <td style="text-align:right">${totPallets || '—'}</td>
-          <td colspan="3"></td>
+          <td></td>
+          <td></td>
         </tr>
       </tfoot>
     </table>
@@ -5646,31 +5716,37 @@ document.addEventListener('DOMContentLoaded', function() {
           + Add Row
         </button>
       </div>
-      <div style="overflow-x:auto">
-        <table style="width:100%;border-collapse:collapse;min-width:1900px">
+      <div id="ps-table-wrap" class="ps-scrollbar" style="overflow-x:auto">
+        <table style="width:100%;border-collapse:collapse;min-width:2900px">
           <thead>
             <tr style="background:rgba(217,119,6,0.08)">
               <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">#</th>
               <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Size (mm)</th>
-              <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Alloy / Grade</th>
-              <th colspan="4" style="padding:6px 10px;text-align:center;font-size:10px;font-weight:800;text-transform:uppercase;color:#fff;background:#8a5a1a;border-bottom:1px solid var(--border)">Front Side</th>
-              <th colspan="4" style="padding:6px 10px;text-align:center;font-size:10px;font-weight:800;text-transform:uppercase;color:#fff;background:#5a4a1a;border-bottom:1px solid var(--border)">Back Side</th>
-              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Qty (t)</th>
-              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Coil Wt (kg)</th>
-              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Total Coils</th>
-              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Coils / Pallet</th>
-              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Pallets</th>
-              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">kg / Pallet</th>
-              <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">OD</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Alloy</th>
+              <th colspan="6" style="padding:6px 10px;text-align:center;font-size:10px;font-weight:800;text-transform:uppercase;color:#fff;background:#8a5a1a;border-bottom:1px solid var(--border)">Coating — Front Side</th>
+              <th colspan="6" style="padding:6px 10px;text-align:center;font-size:10px;font-weight:800;text-transform:uppercase;color:#fff;background:#5a4a1a;border-bottom:1px solid var(--border)">Coating — Back Side</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Qty</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Suggested Qty (t)</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Slitting Pattern</th>
               <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Packing</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Coil Wt (kg)</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Total Qty of Coils<br><span style="font-size:8px;font-weight:600;text-transform:none;opacity:0.7">(auto)</span></th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Coils / Pallet</th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">Qty of Pallets<br><span style="font-size:8px;font-weight:600;text-transform:none;opacity:0.7">(auto)</span></th>
+              <th rowspan="2" style="padding:8px 10px;text-align:right;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">kg / Pallet<br><span style="font-size:8px;font-weight:600;text-transform:none;opacity:0.7">(auto)</span></th>
+              <th rowspan="2" style="padding:8px 10px;text-align:left;font-size:10px;font-weight:700;text-transform:uppercase;color:#d97706;border-bottom:1px solid var(--border);vertical-align:bottom">OD</th>
               <th rowspan="2" style="padding:8px 10px;border-bottom:1px solid var(--border)"></th>
             </tr>
             <tr style="background:rgba(217,119,6,0.08)">
-              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#8a5a1a;border-bottom:1px solid var(--border)">Coating</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#8a5a1a;border-bottom:1px solid var(--border)">Paint</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#8a5a1a;border-bottom:1px solid var(--border)">Plastic Coating</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#8a5a1a;border-bottom:1px solid var(--border)">Code</th>
               <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#8a5a1a;border-bottom:1px solid var(--border)">Colour</th>
               <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#8a5a1a;border-bottom:1px solid var(--border)">Gloss</th>
               <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#8a5a1a;border-bottom:1px solid var(--border)">Gauge</th>
-              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#5a4a1a;border-bottom:1px solid var(--border)">Coating</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#5a4a1a;border-bottom:1px solid var(--border)">Paint</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#5a4a1a;border-bottom:1px solid var(--border)">Plastic Coating</th>
+              <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#5a4a1a;border-bottom:1px solid var(--border)">Code</th>
               <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#5a4a1a;border-bottom:1px solid var(--border)">Colour</th>
               <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#5a4a1a;border-bottom:1px solid var(--border)">Gloss</th>
               <th style="padding:6px 8px;text-align:left;font-size:9px;font-weight:700;text-transform:uppercase;color:#5a4a1a;border-bottom:1px solid var(--border)">Gauge</th>
@@ -5679,6 +5755,10 @@ document.addEventListener('DOMContentLoaded', function() {
           <tbody id="ps-rows"></tbody>
           <tfoot id="ps-foot"></tfoot>
         </table>
+      </div>
+      <!-- Always-visible bottom scroll track, synced to the table above -->
+      <div id="ps-scroll-track" class="ps-scrollbar" style="overflow-x:auto;overflow-y:hidden;height:16px;margin-top:2px">
+        <div id="ps-scroll-dummy" style="height:1px"></div>
       </div>
     </div>
 
@@ -5694,9 +5774,13 @@ document.addEventListener('DOMContentLoaded', function() {
     </div>
   </div>
 </div>
-
-
-<!-- DUFERCO COSTING SHEET PAGE -->
+<style>
+  .ps-scrollbar::-webkit-scrollbar { height: 14px; }
+  .ps-scrollbar::-webkit-scrollbar-track { background: var(--surface2); border-radius: 8px; }
+  .ps-scrollbar::-webkit-scrollbar-thumb { background: #d97706; border-radius: 8px; border: 3px solid var(--surface2); }
+  .ps-scrollbar::-webkit-scrollbar-thumb:hover { background: #b45309; }
+  .ps-scrollbar { scrollbar-width: auto; scrollbar-color: #d97706 var(--surface2); }
+</style>
 <div id="page-duferco" class="page">
 <div style="max-width:1400px;margin:0 auto">
 <div style="background:linear-gradient(135deg,#1e3a8a,#1d4ed8);border-radius:14px;padding:20px 28px;margin-bottom:24px;display:flex;align-items:center;justify-content:space-between;gap:16px">
